@@ -1,1 +1,78 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Panel Multifirma - Demo</title>
+  <style>
+    body{font-family:Inter,system-ui,Arial;margin:20px}
+    .pr{border:1px solid #ddd;padding:12px;margin:10px 0;border-radius:8px}
+    .green{background:#e6ffed} .yellow{background:#fffbe6} .red{background:#ffe6e6}
+    .meta{font-size:0.9em;color:#555}
+    .badge{display:inline-block;padding:4px 8px;border-radius:999px;font-weight:600;margin-right:6px}
+  </style>
+</head>
+<body>
+  <h2>🚦 Panel multifirma — Demo rápida</h2>
+  <div>
+    Repositorio: <strong id="repoLabel"></strong>
+  </div>
+  <div id="container"></div>
+
+<script>
+const owner = "TU_USUARIO";    // <-- cambia aquí por tu usuario de GitHub
+const repo  = "netmon";        // <-- cambia aquí si tu repo tiene otro nombre
+document.getElementById('repoLabel').innerText = `${owner}/${repo}`;
+
+async function api(path){
+  const url = `https://api.github.com/repos/${owner}/${repo}${path}`;
+  const res = await fetch(url);
+  if(!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+function stateClass(s){ return s==="green"?"green": s==="yellow"?"yellow":"red"; }
+
+async function build(){
+  const prs = await api('/pulls?state=open');
+  const cont = document.getElementById('container');
+  cont.innerHTML = '';
+  for(const pr of prs){
+    const commits = await fetch(pr.commits_url).then(r=>r.json());
+    const reviews = await fetch(pr.url + '/reviews').then(r=>r.json());
+    const signed = commits.length>0 && commits.every(c => c.commit && c.commit.verification && c.commit.verification.verified === true);
+    const approvers = new Set(reviews.filter(r=>r.state==="APPROVED").map(r=>r.user.login));
+    const approvals = approvers.size;
+    let sast = "pending";
+    try {
+      const checks = await fetch(`https://api.github.com/repos/${owner}/${repo}/commits/${pr.head.sha}/check-suites`).then(r=>r.json());
+      if(checks.total_count && checks.total_count>0) sast = "success";
+    } catch(e){}
+    let state = "red";
+    if(!signed || sast==="failure") state="red";
+    else if(signed && approvals<2) state="yellow";
+    else if(signed && approvals>=2 && sast==="success") state="green";
+
+    const div = document.createElement('div');
+    div.className = 'pr ' + stateClass(state);
+    div.innerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div>
+          <strong>PR #${pr.number} — ${pr.title}</strong>
+          <div class="meta">Autor: ${pr.user.login} • SHA: ${pr.head.sha.slice(0,7)}</div>
+        </div>
+        <div style="text-align:right">
+          <div class="badge">${signed? '✅ Firmado':'❌ Sin firma'}</div>
+          <div class="badge">👥 ${approvals}/2 aprobaciones</div>
+          <div class="badge">SAST: ${sast}</div>
+        </div>
+      </div>
+      <div style="margin-top:8px">${pr.body? pr.body.slice(0,220):''}</div>
+    `;
+    cont.appendChild(div);
+  }
+}
+build().catch(err=>{ document.getElementById('container').innerText = 'Error: '+err.message; });
+</script>
+</body>
+</html>
 
