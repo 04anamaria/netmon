@@ -1,91 +1,115 @@
-<!DOCTYPE html>
-<html lang="es">
+<!doctype html>
+<html>
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Panel Multifirma Demo</title>
+  <meta charset="utf-8" />
+  <title>Panel Multifirma - Demo</title>
   <style>
-    body {
-      font-family: Arial, sans-serif;
-      background: #f5f6fa;
-      color: #2f3640;
-      text-align: center;
-      padding: 40px;
-    }
-    h1 {
-      color: #273c75;
-    }
-    .panel {
-      margin: 30px auto;
-      background: white;
-      border-radius: 15px;
-      padding: 30px;
-      box-shadow: 0 4px 10px rgba(0,0,0,0.1);
-      width: 300px;
-    }
-    .firma {
-      margin: 15px 0;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-    }
-    button {
-      background: #44bd32;
-      color: white;
-      border: none;
-      padding: 10px 15px;
-      border-radius: 10px;
-      cursor: pointer;
-    }
-    button:disabled {
-      background: #aaa;
-      cursor: not-allowed;
-    }
-    #resultado {
-      margin-top: 20px;
-      font-weight: bold;
-    }
+    body{font-family:Inter,system-ui,Arial;margin:20px;background:#fafafa;color:#222}
+    .pr{border:1px solid #ddd;padding:12px;margin:10px 0;border-radius:12px;background:#fff;box-shadow:0 2px 4px rgba(0,0,0,0.05)}
+    .green{background:#e6ffed}
+    .yellow{background:#fffbe6}
+    .red{background:#ffe6e6}
+    .alert{background:#ffdddd;color:#900;padding:8px;border-radius:8px;margin-top:6px;font-weight:600}
+    .meta{font-size:0.9em;color:#555}
+    .badge{display:inline-block;padding:4px 8px;border-radius:999px;font-weight:600;margin-right:6px;background:#eee}
+    button{background:#2563eb;color:#fff;border:none;border-radius:6px;padding:6px 10px;cursor:pointer;font-weight:600}
+    button:hover{background:#1e40af}
   </style>
 </head>
 <body>
-  <h1>🔐 Demostración Multifirma</h1>
-  <p>Se requieren <strong>2 firmas</strong> para aprobar la transacción.</p>
+  <h2>🚦 Panel multifirma — Demo rápida</h2>
+  <div>Repositorio: <strong id="repoLabel"></strong></div>
+  <div id="container"></div>
+  <div id="lastUpdate" style="margin-top:10px;font-size:0.9em;color:#666"></div>
 
-  <div class="panel">
-    <div class="firma">
-      <span>👤 Sofía</span>
-      <button id="firma1" onclick="firmar(1)">Firmar</button>
-    </div>
-    <div class="firma">
-      <span>👤 Valeria</span>
-      <button id="firma2" onclick="firmar(2)">Firmar</button>
-    </div>
+<script>
+const owner = "04anamaria";   // <-- tu usuario de GitHub
+const repo  = "netmon";       // <-- tu repositorio
+document.getElementById('repoLabel').innerText = `${owner}/${repo}`;
 
-    <p id="resultado">Estado: ❌ Pendiente de aprobación</p>
-  </div>
+// 🔹 Guardar las aprobaciones simuladas en memoria temporal
+const simulatedApprovals = {};
 
-  <script>
-    let firmas = { sofia: false, valeria: false };
+async function api(path){
+  const url = `https://api.github.com/repos/${owner}/${repo}${path}`;
+  const res = await fetch(url);
+  if(!res.ok) throw new Error(await res.text());
+  return res.json();
+}
 
-    function firmar(n) {
-      if (n === 1) {
-        firmas.sofia = true;
-        document.getElementById("firma1").disabled = true;
-        document.getElementById("firma1").innerText = "Firmado ✅";
-      } else {
-        firmas.valeria = true;
-        document.getElementById("firma2").disabled = true;
-        document.getElementById("firma2").innerText = "Firmado ✅";
-      }
+function stateClass(state){ return state==="green"?"green": state==="yellow"?"yellow":"red"; }
 
-      if (firmas.sofia && firmas.valeria) {
-        document.getElementById("resultado").innerText = "✅ Transacción aprobada por ambas partes";
-        document.getElementById("resultado").style.color = "green";
-      } else {
-        document.getElementById("resultado").innerText = "⏳ Esperando la otra firma...";
-        document.getElementById("resultado").style.color = "orange";
-      }
-    }
-  </script>
+// 🔸 Función principal que construye el panel
+async function build(){
+  const prs = await api('/pulls?state=open');
+  const cont = document.getElementById('container');
+  cont.innerHTML = '';
+  for(const pr of prs){
+    const commits = await fetch(pr.commits_url).then(r=>r.json());
+    const reviews = await fetch(pr.url + '/reviews').then(r=>r.json());
+    const signed = commits.length>0 && commits.every(c => c.commit && c.commit.verification && c.commit.verification.verified === true);
+    const approvers = new Set(reviews.filter(r=>r.state==="APPROVED").map(r=>r.user.login));
+    let approvals = approvers.size;
+
+    // ✅ Simulación de aprobación
+    const simulated = simulatedApprovals[pr.number] || 0;
+    approvals += simulated;
+
+    // 🔹 Estado del análisis (simulado)
+    let sast = "success";
+
+    // 🔸 Lógica de colores del estado general
+    let state = "red";
+    if(!signed || sast==="failure") state="red";
+    else if(signed && approvals<2) state="yellow";
+    else if(signed && approvals>=2 && sast==="success") state="green";
+
+    // ⚠️ Alerta si el PR tiene más de 3 días abierto y menos de 2 aprobaciones
+    const created = new Date(pr.created_at);
+    const daysOpen = (Date.now() - created.getTime()) / (1000*60*60*24);
+    const alert = (daysOpen > 3 && approvals < 2);
+
+    // 🧱 Construir el bloque visual
+    const div = document.createElement('div');
+    div.className = 'pr ' + stateClass(state);
+    div.innerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div>
+          <strong>PR #${pr.number} — ${pr.title}</strong>
+          <div class="meta">Autor: ${pr.user.login} • SHA: ${pr.head.sha.slice(0,7)} • Abierto hace ${daysOpen.toFixed(1)} días</div>
+        </div>
+        <div style="text-align:right">
+          <div class="badge">${signed? '✅ Firmado':'❌ Sin firma'}</div>
+          <div class="badge">👥 ${approvals}/2 aprobaciones</div>
+          <div class="badge">SAST: ${sast}</div>
+        </div>
+      </div>
+      <div style="margin-top:8px">${pr.body? pr.body.slice(0,220):''}</div>
+      <div style="margin-top:8px;">
+        <button onclick="simulateApprove(${pr.number})">+1 aprobación (simular)</button>
+        <button onclick="resetSim(${pr.number})" style="background:#9ca3af">Reset simulación</button>
+      </div>
+      ${alert ? `<div class="alert">⚠️ ALERTA: PR estancado — ${daysOpen.toFixed(0)} días abierto sin aprobar.</div>` : ''}
+    `;
+    cont.appendChild(div);
+  }
+
+  document.getElementById('lastUpdate').innerText = "Última actualización: " + new Date().toLocaleTimeString();
+}
+
+// 🔹 Funciones auxiliares
+function simulateApprove(num){
+  simulatedApprovals[num] = (simulatedApprovals[num] || 0) + 1;
+  build();
+}
+function resetSim(num){
+  simulatedApprovals[num] = 0;
+  build();
+}
+
+// 🔄 Autoactualización cada 30 segundos
+build();
+setInterval(build, 30000);
+</script>
 </body>
 </html>
