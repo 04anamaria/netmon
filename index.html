@@ -1,556 +1,91 @@
-<!doctype html>
-<html>
+<!DOCTYPE html>
+<html lang="es">
 <head>
-  <meta charset="utf-8" />
-  <title>Panel Multifirma - Demo</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Panel Multifirma Demo</title>
   <style>
     body {
-      font-family: Inter, system-ui, Arial;
-      margin: 20px;
-      background: #fafafa;
+      font-family: Arial, sans-serif;
+      background: #f5f6fa;
+      color: #2f3640;
+      text-align: center;
+      padding: 40px;
     }
-    .pr {
-      border: 1px solid #ddd;
-      padding: 12px;
-      margin: 10px 0;
-      border-radius: 8px;
+    h1 {
+      color: #273c75;
+    }
+    .panel {
+      margin: 30px auto;
       background: white;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+      border-radius: 15px;
+      padding: 30px;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+      width: 300px;
     }
-    .green { background: #e6ffed; }
-    .yellow { background: #fffbe6; }
-    .red { background: #ffe6e6; }
-    .meta { font-size: 0.9em; color: #555; }
-    .badge {
-      display: inline-block;
-      padding: 4px 8px;
-      border-radius: 999px;
-      font-weight: 600;
-      margin-right: 6px;
-      background: #eee;
+    .firma {
+      margin: 15px 0;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
     }
     button {
-      border: none;
-      border-radius: 6px;
-      background: #007bff;
+      background: #44bd32;
       color: white;
-      padding: 6px 10px;
+      border: none;
+      padding: 10px 15px;
+      border-radius: 10px;
       cursor: pointer;
-      font-size: 0.9em;
     }
-    button:hover {
-      background: #0056b3;
+    button:disabled {
+      background: #aaa;
+      cursor: not-allowed;
+    }
+    #resultado {
+      margin-top: 20px;
+      font-weight: bold;
     }
   </style>
 </head>
 <body>
-  <h2>🚦 Panel multifirma — Demo rápida</h2>
-  <div>Repositorio: <strong id="repoLabel"></strong></div>
-  <div id="container"></div>
+  <h1>🔐 Demostración Multifirma</h1>
+  <p>Se requieren <strong>2 firmas</strong> para aprobar la transacción.</p>
 
-<script>
-const owner = "04anamaria";    // <-- tu usuario de GitHub
-const repo  = "netmon";        // <-- tu repositorio
-document.getElementById('repoLabel').innerText = `${owner}/${repo}`;
+  <div class="panel">
+    <div class="firma">
+      <span>👤 Sofía</span>
+      <button id="firma1" onclick="firmar(1)">Firmar</button>
+    </div>
+    <div class="firma">
+      <span>👤 Valeria</span>
+      <button id="firma2" onclick="firmar(2)">Firmar</button>
+    </div>
 
-function storageKey(prNumber){ 
-  return `netmon_sim_approvals_${owner}_${repo}_${prNumber}`; 
-}
+    <p id="resultado">Estado: ❌ Pendiente de aprobación</p>
+  </div>
 
-async function api(path){
-  const url = `https://api.github.com/repos/${owner}/${repo}${path}`;
-  const res = await fetch(url);
-  if(!res.ok) throw new Error(await res.text());
-  return res.json();
-}
+  <script>
+    let firmas = { sofia: false, valeria: false };
 
-function stateClass(s){ 
-  return s==="green"?"green": s==="yellow"?"yellow":"red"; 
-}
+    function firmar(n) {
+      if (n === 1) {
+        firmas.sofia = true;
+        document.getElementById("firma1").disabled = true;
+        document.getElementById("firma1").innerText = "Firmado ✅";
+      } else {
+        firmas.valeria = true;
+        document.getElementById("firma2").disabled = true;
+        document.getElementById("firma2").innerText = "Firmado ✅";
+      }
 
-function getSimApprovals(prNumber){
-  const v = localStorage.getItem(storageKey(prNumber));
-  return v ? Number(v) : null;
-}
-function addSimApproval(prNumber){
-  const cur = getSimApprovals(prNumber) ?? 0;
-  localStorage.setItem(storageKey(prNumber), String(cur + 1));
-  build();
-}
-function resetSimApprovals(prNumber){
-  localStorage.removeItem(storageKey(prNumber));
-  build();
-}
-
-async function build(){
-  const prs = await api('/pulls?state=open');
-  const cont = document.getElementById('container');
-  cont.innerHTML = '';
-  for(const pr of prs){
-    const commits = await fetch(pr.commits_url).then(r=>r.json());
-    const reviews = await fetch(pr.url + '/reviews').then(r=>r.json());
-    const signed = commits.length>0 && commits.every(c => c.commit && c.commit.verification && c.commit.verification.verified === true);
-    const approvers = new Set(reviews.filter(r=>r.state==="APPROVED").map(r=>r.user.login));
-    let approvals = approvers.size;
-
-    const sim = getSimApprovals(pr.number);
-    if(sim !== null) approvals = approvals + sim;
-
-    let sast = "pending";
-    try {
-      const checks = await fetch(`https://api.github.com/repos/${owner}/${repo}/commits/${pr.head.sha}/check-suites`).then(r=>r.json());
-      if(checks.total_count && checks.total_count>0) sast = "success";
-    } catch(e){}
-
-    let state = "red";
-    if(!signed || sast==="failure") state="red";
-    else if(signed && approvals<2) state="yellow";
-    else if(signed && approvals>=2 && sast==="success") state="green";
-
-    const div = document.createElement('div');
-    div.className = 'pr ' + stateClass(state);
-    div.innerHTML = `
-      <div style="display:flex;justify-content:space-between;align-items:center">
-        <div>
-          <strong>PR #${pr.number} — ${pr.title}</strong>
-          <div class="meta">Autor: ${pr.user.login} • SHA: ${pr.head.sha.slice(0,7)}</div>
-        </div>
-        <div style="text-align:right">
-          <div class="badge">${signed? '✅ Firmado':'❌ Sin firma'}</div>
-          <div class="badge">👥 ${approvals}/2 aprobaciones</div>
-          <div class="badge">SAST: ${sast}</div>
-        </div>
-      </div>
-      <div style="margin-top:8px">${pr.body? pr.body.slice(0,220):''}</div>
-      <div style="margin-top:8px">
-        <button onclick="addSimApproval(${pr.number})">+1 aprobación (simular)</button>
-        <button onclick="resetSimApprovals(${pr.number})" style="margin-left:8px;background:#888">Reset simulación</button>
-      </div>
-    `;
-    cont.appendChild(div);
-  }
-}
-
-build().catch(err=>{
-  document.getElementById('container').innerText = 'Error: '+err.message;
-});
-</script>
-</body>
-</html>
-<!doctype html>
-<html>
-<head>
-  <meta charset="utf-8" />
-  <title>Panel Multifirma - Demo</title>
-  <style>
-    body {
-      font-family: Inter, system-ui, Arial;
-      margin: 20px;
-      background: #fafafa;
+      if (firmas.sofia && firmas.valeria) {
+        document.getElementById("resultado").innerText = "✅ Transacción aprobada por ambas partes";
+        document.getElementById("resultado").style.color = "green";
+      } else {
+        document.getElementById("resultado").innerText = "⏳ Esperando la otra firma...";
+        document.getElementById("resultado").style.color = "orange";
+      }
     }
-    .pr {
-      border: 1px solid #ddd;
-      padding: 12px;
-      margin: 10px 0;
-      border-radius: 8px;
-      background: white;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-    }
-    .green { background: #e6ffed; }
-    .yellow { background: #fffbe6; }
-    .red { background: #ffe6e6; }
-    .meta { font-size: 0.9em; color: #555; }
-    .badge {
-      display: inline-block;
-      padding: 4px 8px;
-      border-radius: 999px;
-      font-weight: 600;
-      margin-right: 6px;
-      background: #eee;
-    }
-    button {
-      border: none;
-      border-radius: 6px;
-      background: #007bff;
-      color: white;
-      padding: 6px 10px;
-      cursor: pointer;
-      font-size: 0.9em;
-    }
-    button:hover {
-      background: #0056b3;
-    }
-  </style>
-</head>
-<body>
-  <h2>🚦 Panel multifirma — Demo rápida</h2>
-  <div>Repositorio: <strong id="repoLabel"></strong></div>
-  <div id="container"></div>
-
-<script>
-const owner = "04anamaria";    // <-- tu usuario de GitHub
-const repo  = "netmon";        // <-- tu repositorio
-document.getElementById('repoLabel').innerText = `${owner}/${repo}`;
-
-function storageKey(prNumber){ 
-  return `netmon_sim_approvals_${owner}_${repo}_${prNumber}`; 
-}
-
-async function api(path){
-  const url = `https://api.github.com/repos/${owner}/${repo}${path}`;
-  const res = await fetch(url);
-  if(!res.ok) throw new Error(await res.text());
-  return res.json();
-}
-
-function stateClass(s){ 
-  return s==="green"?"green": s==="yellow"?"yellow":"red"; 
-}
-
-function getSimApprovals(prNumber){
-  const v = localStorage.getItem(storageKey(prNumber));
-  return v ? Number(v) : null;
-}
-function addSimApproval(prNumber){
-  const cur = getSimApprovals(prNumber) ?? 0;
-  localStorage.setItem(storageKey(prNumber), String(cur + 1));
-  build();
-}
-function resetSimApprovals(prNumber){
-  localStorage.removeItem(storageKey(prNumber));
-  build();
-}
-
-async function build(){
-  const prs = await api('/pulls?state=open');
-  const cont = document.getElementById('container');
-  cont.innerHTML = '';
-  for(const pr of prs){
-    const commits = await fetch(pr.commits_url).then(r=>r.json());
-    const reviews = await fetch(pr.url + '/reviews').then(r=>r.json());
-    const signed = commits.length>0 && commits.every(c => c.commit && c.commit.verification && c.commit.verification.verified === true);
-    const approvers = new Set(reviews.filter(r=>r.state==="APPROVED").map(r=>r.user.login));
-    let approvals = approvers.size;
-
-    const sim = getSimApprovals(pr.number);
-    if(sim !== null) approvals = approvals + sim;
-
-    let sast = "pending";
-    try {
-      const checks = await fetch(`https://api.github.com/repos/${owner}/${repo}/commits/${pr.head.sha}/check-suites`).then(r=>r.json());
-      if(checks.total_count && checks.total_count>0) sast = "success";
-    } catch(e){}
-
-    let state = "red";
-    if(!signed || sast==="failure") state="red";
-    else if(signed && approvals<2) state="yellow";
-    else if(signed && approvals>=2 && sast==="success") state="green";
-
-    const div = document.createElement('div');
-    div.className = 'pr ' + stateClass(state);
-    div.innerHTML = `
-      <div style="display:flex;justify-content:space-between;align-items:center">
-        <div>
-          <strong>PR #${pr.number} — ${pr.title}</strong>
-          <div class="meta">Autor: ${pr.user.login} • SHA: ${pr.head.sha.slice(0,7)}</div>
-        </div>
-        <div style="text-align:right">
-          <div class="badge">${signed? '✅ Firmado':'❌ Sin firma'}</div>
-          <div class="badge">👥 ${approvals}/2 aprobaciones</div>
-          <div class="badge">SAST: ${sast}</div>
-        </div>
-      </div>
-      <div style="margin-top:8px">${pr.body? pr.body.slice(0,220):''}</div>
-      <div style="margin-top:8px">
-        <button onclick="addSimApproval(${pr.number})">+1 aprobación (simular)</button>
-        <button onclick="resetSimApprovals(${pr.number})" style="margin-left:8px;background:#888">Reset simulación</button>
-      </div>
-    `;
-    cont.appendChild(div);
-  }
-}
-
-build().catch(err=>{
-  document.getElementById('container').innerText = 'Error: '+err.message;
-});
-</script>
-</body>
-</html>
-<!doctype html>
-<html>
-<head>
-  <meta charset="utf-8" />
-  <title>Panel Multifirma - Demo</title>
-  <style>
-    body {
-      font-family: Inter, system-ui, Arial;
-      margin: 20px;
-      background: #fafafa;
-    }
-    .pr {
-      border: 1px solid #ddd;
-      padding: 12px;
-      margin: 10px 0;
-      border-radius: 8px;
-      background: white;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-    }
-    .green { background: #e6ffed; }
-    .yellow { background: #fffbe6; }
-    .red { background: #ffe6e6; }
-    .meta { font-size: 0.9em; color: #555; }
-    .badge {
-      display: inline-block;
-      padding: 4px 8px;
-      border-radius: 999px;
-      font-weight: 600;
-      margin-right: 6px;
-      background: #eee;
-    }
-    button {
-      border: none;
-      border-radius: 6px;
-      background: #007bff;
-      color: white;
-      padding: 6px 10px;
-      cursor: pointer;
-      font-size: 0.9em;
-    }
-    button:hover {
-      background: #0056b3;
-    }
-  </style>
-</head>
-<body>
-  <h2>🚦 Panel multifirma — Demo rápida</h2>
-  <div>Repositorio: <strong id="repoLabel"></strong></div>
-  <div id="container"></div>
-
-<script>
-const owner = "04anamaria";    // <-- tu usuario de GitHub
-const repo  = "netmon";        // <-- tu repositorio
-document.getElementById('repoLabel').innerText = `${owner}/${repo}`;
-
-function storageKey(prNumber){ 
-  return `netmon_sim_approvals_${owner}_${repo}_${prNumber}`; 
-}
-
-async function api(path){
-  const url = `https://api.github.com/repos/${owner}/${repo}${path}`;
-  const res = await fetch(url);
-  if(!res.ok) throw new Error(await res.text());
-  return res.json();
-}
-
-function stateClass(s){ 
-  return s==="green"?"green": s==="yellow"?"yellow":"red"; 
-}
-
-function getSimApprovals(prNumber){
-  const v = localStorage.getItem(storageKey(prNumber));
-  return v ? Number(v) : null;
-}
-function addSimApproval(prNumber){
-  const cur = getSimApprovals(prNumber) ?? 0;
-  localStorage.setItem(storageKey(prNumber), String(cur + 1));
-  build();
-}
-function resetSimApprovals(prNumber){
-  localStorage.removeItem(storageKey(prNumber));
-  build();
-}
-
-async function build(){
-  const prs = await api('/pulls?state=open');
-  const cont = document.getElementById('container');
-  cont.innerHTML = '';
-  for(const pr of prs){
-    const commits = await fetch(pr.commits_url).then(r=>r.json());
-    const reviews = await fetch(pr.url + '/reviews').then(r=>r.json());
-    const signed = commits.length>0 && commits.every(c => c.commit && c.commit.verification && c.commit.verification.verified === true);
-    const approvers = new Set(reviews.filter(r=>r.state==="APPROVED").map(r=>r.user.login));
-    let approvals = approvers.size;
-
-    const sim = getSimApprovals(pr.number);
-    if(sim !== null) approvals = approvals + sim;
-
-    let sast = "pending";
-    try {
-      const checks = await fetch(`https://api.github.com/repos/${owner}/${repo}/commits/${pr.head.sha}/check-suites`).then(r=>r.json());
-      if(checks.total_count && checks.total_count>0) sast = "success";
-    } catch(e){}
-
-    let state = "red";
-    if(!signed || sast==="failure") state="red";
-    else if(signed && approvals<2) state="yellow";
-    else if(signed && approvals>=2 && sast==="success") state="green";
-
-    const div = document.createElement('div');
-    div.className = 'pr ' + stateClass(state);
-    div.innerHTML = `
-      <div style="display:flex;justify-content:space-between;align-items:center">
-        <div>
-          <strong>PR #${pr.number} — ${pr.title}</strong>
-          <div class="meta">Autor: ${pr.user.login} • SHA: ${pr.head.sha.slice(0,7)}</div>
-        </div>
-        <div style="text-align:right">
-          <div class="badge">${signed? '✅ Firmado':'❌ Sin firma'}</div>
-          <div class="badge">👥 ${approvals}/2 aprobaciones</div>
-          <div class="badge">SAST: ${sast}</div>
-        </div>
-      </div>
-      <div style="margin-top:8px">${pr.body? pr.body.slice(0,220):''}</div>
-      <div style="margin-top:8px">
-        <button onclick="addSimApproval(${pr.number})">+1 aprobación (simular)</button>
-        <button onclick="resetSimApprovals(${pr.number})" style="margin-left:8px;background:#888">Reset simulación</button>
-      </div>
-    `;
-    cont.appendChild(div);
-  }
-}
-
-build().catch(err=>{
-  document.getElementById('container').innerText = 'Error: '+err.message;
-});
-</script>
-</body>
-</html>
-<!doctype html>
-<html>
-<head>
-  <meta charset="utf-8" />
-  <title>Panel Multifirma - Demo</title>
-  <style>
-    body {
-      font-family: Inter, system-ui, Arial;
-      margin: 20px;
-      background: #fafafa;
-    }
-    .pr {
-      border: 1px solid #ddd;
-      padding: 12px;
-      margin: 10px 0;
-      border-radius: 8px;
-      background: white;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-    }
-    .green { background: #e6ffed; }
-    .yellow { background: #fffbe6; }
-    .red { background: #ffe6e6; }
-    .meta { font-size: 0.9em; color: #555; }
-    .badge {
-      display: inline-block;
-      padding: 4px 8px;
-      border-radius: 999px;
-      font-weight: 600;
-      margin-right: 6px;
-      background: #eee;
-    }
-    button {
-      border: none;
-      border-radius: 6px;
-      background: #007bff;
-      color: white;
-      padding: 6px 10px;
-      cursor: pointer;
-      font-size: 0.9em;
-    }
-    button:hover {
-      background: #0056b3;
-    }
-  </style>
-</head>
-<body>
-  <h2>🚦 Panel multifirma — Demo rápida</h2>
-  <div>Repositorio: <strong id="repoLabel"></strong></div>
-  <div id="container"></div>
-
-<script>
-const owner = "04anamaria";    // <-- tu usuario de GitHub
-const repo  = "netmon";        // <-- tu repositorio
-document.getElementById('repoLabel').innerText = `${owner}/${repo}`;
-
-function storageKey(prNumber){ 
-  return `netmon_sim_approvals_${owner}_${repo}_${prNumber}`; 
-}
-
-async function api(path){
-  const url = `https://api.github.com/repos/${owner}/${repo}${path}`;
-  const res = await fetch(url);
-  if(!res.ok) throw new Error(await res.text());
-  return res.json();
-}
-
-function stateClass(s){ 
-  return s==="green"?"green": s==="yellow"?"yellow":"red"; 
-}
-
-function getSimApprovals(prNumber){
-  const v = localStorage.getItem(storageKey(prNumber));
-  return v ? Number(v) : null;
-}
-function addSimApproval(prNumber){
-  const cur = getSimApprovals(prNumber) ?? 0;
-  localStorage.setItem(storageKey(prNumber), String(cur + 1));
-  build();
-}
-function resetSimApprovals(prNumber){
-  localStorage.removeItem(storageKey(prNumber));
-  build();
-}
-
-async function build(){
-  const prs = await api('/pulls?state=open');
-  const cont = document.getElementById('container');
-  cont.innerHTML = '';
-  for(const pr of prs){
-    const commits = await fetch(pr.commits_url).then(r=>r.json());
-    const reviews = await fetch(pr.url + '/reviews').then(r=>r.json());
-    const signed = commits.length>0 && commits.every(c => c.commit && c.commit.verification && c.commit.verification.verified === true);
-    const approvers = new Set(reviews.filter(r=>r.state==="APPROVED").map(r=>r.user.login));
-    let approvals = approvers.size;
-
-    const sim = getSimApprovals(pr.number);
-    if(sim !== null) approvals = approvals + sim;
-
-    let sast = "pending";
-    try {
-      const checks = await fetch(`https://api.github.com/repos/${owner}/${repo}/commits/${pr.head.sha}/check-suites`).then(r=>r.json());
-      if(checks.total_count && checks.total_count>0) sast = "success";
-    } catch(e){}
-
-    let state = "red";
-    if(!signed || sast==="failure") state="red";
-    else if(signed && approvals<2) state="yellow";
-    else if(signed && approvals>=2 && sast==="success") state="green";
-
-    const div = document.createElement('div');
-    div.className = 'pr ' + stateClass(state);
-    div.innerHTML = `
-      <div style="display:flex;justify-content:space-between;align-items:center">
-        <div>
-          <strong>PR #${pr.number} — ${pr.title}</strong>
-          <div class="meta">Autor: ${pr.user.login} • SHA: ${pr.head.sha.slice(0,7)}</div>
-        </div>
-        <div style="text-align:right">
-          <div class="badge">${signed? '✅ Firmado':'❌ Sin firma'}</div>
-          <div class="badge">👥 ${approvals}/2 aprobaciones</div>
-          <div class="badge">SAST: ${sast}</div>
-        </div>
-      </div>
-      <div style="margin-top:8px">${pr.body? pr.body.slice(0,220):''}</div>
-      <div style="margin-top:8px">
-        <button onclick="addSimApproval(${pr.number})">+1 aprobación (simular)</button>
-        <button onclick="resetSimApprovals(${pr.number})" style="margin-left:8px;background:#888">Reset simulación</button>
-      </div>
-    `;
-    cont.appendChild(div);
-  }
-}
-
-build().catch(err=>{
-  document.getElementById('container').innerText = 'Error: '+err.message;
-});
-</script>
+  </script>
 </body>
 </html>
